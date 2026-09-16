@@ -62,10 +62,12 @@ mod win_impl {
             );
             let _ = RegCloseKey(hkey);
 
-            match result {
-                Ok(()) => Ok(Some(data)),
-                Err(e) if e.code().0 as u32 == ERROR_FILE_NOT_FOUND.0 => Ok(None),
-                Err(e) => Err(RegistryError::Win32(e.to_string())),
+            if result.is_ok() {
+                Ok(Some(data))
+            } else if result == ERROR_FILE_NOT_FOUND {
+                Ok(None)
+            } else {
+                Err(RegistryError::Win32(format!("{result:?}")))
             }
         }
     }
@@ -77,7 +79,7 @@ mod win_impl {
         unsafe {
             let mut hkey = HKEY::default();
             let subkey_w = wide(subkey);
-            RegCreateKeyExW(
+            let create_result = RegCreateKeyExW(
                 root_hkey(hive),
                 PCWSTR(subkey_w.as_ptr()),
                 0,
@@ -87,14 +89,20 @@ mod win_impl {
                 None,
                 &mut hkey,
                 None,
-            )
-            .map_err(|e| RegistryError::Win32(e.to_string()))?;
+            );
+            if !create_result.is_ok() {
+                return Err(RegistryError::Win32(format!("{create_result:?}")));
+            }
 
             let name_w = wide(value_name);
             let bytes = value.to_le_bytes();
             let result = RegSetValueExW(hkey, PCWSTR(name_w.as_ptr()), 0, REG_DWORD, Some(&bytes));
             let _ = RegCloseKey(hkey);
-            result.map_err(|e| RegistryError::Win32(e.to_string()))
+            if result.is_ok() {
+                Ok(())
+            } else {
+                Err(RegistryError::Win32(format!("{result:?}")))
+            }
         }
     }
 
@@ -111,10 +119,10 @@ mod win_impl {
             let name_w = wide(value_name);
             let result = RegDeleteValueW(hkey, PCWSTR(name_w.as_ptr()));
             let _ = RegCloseKey(hkey);
-            match result {
-                Ok(()) => Ok(()),
-                Err(e) if e.code().0 as u32 == ERROR_FILE_NOT_FOUND.0 => Ok(()),
-                Err(e) => Err(RegistryError::Win32(e.to_string())),
+            if result.is_ok() || result == ERROR_FILE_NOT_FOUND {
+                Ok(())
+            } else {
+                Err(RegistryError::Win32(format!("{result:?}")))
             }
         }
     }
