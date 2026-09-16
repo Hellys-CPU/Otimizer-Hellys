@@ -66,10 +66,12 @@ mod win_impl {
             );
             let _ = RegCloseKey(hkey);
 
-            match result {
-                Ok(()) => Ok(Some(data)),
-                Err(e) if e.code().0 as u32 == ERROR_FILE_NOT_FOUND.0 => Ok(None),
-                Err(e) => Err(RegistryError::Win32(e.to_string())),
+            if result.is_ok() {
+                Ok(Some(data))
+            } else if result == ERROR_FILE_NOT_FOUND {
+                Ok(None)
+            } else {
+                Err(RegistryError::Win32(format!("{result:?}")))
             }
         }
     }

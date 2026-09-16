@@ -126,9 +126,9 @@ mod win_impl {
 
             let result = ChangeServiceConfigW(
                 service,
-                SERVICE_NO_CHANGE,
+                windows::Win32::System::Services::ENUM_SERVICE_TYPE(SERVICE_NO_CHANGE),
                 windows::Win32::System::Services::SERVICE_START_TYPE(to_win32(start_type)),
-                SERVICE_NO_CHANGE,
+                windows::Win32::System::Services::SERVICE_ERROR(SERVICE_NO_CHANGE),
                 PCWSTR::null(),
                 PCWSTR::null(),
                 None,

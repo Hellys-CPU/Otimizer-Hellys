@@ -17,8 +17,8 @@ pub fn read_run_value(location: &str, app_name: &str) -> Result<Option<String>, 
         RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
     };
 
-    let (hive, subkey) = validate_registry_path(location)?;
-    validate_value_name(app_name)?;
+    let (hive, subkey) = validate_registry_path(location).map_err(RegistryError::Validation)?;
+    validate_value_name(app_name).map_err(RegistryError::Validation)?;
     if hive != "HKEY_CURRENT_USER" {
         return Err(StartupError::Registry(RegistryError::Validation(
             systemforge_shared::validation::ValidationError::HiveNotAllowed(hive.to_string()),
@@ -47,12 +47,11 @@ pub fn read_run_value(location: &str, app_name: &str) -> Result<Option<String>, 
         );
         let _ = RegCloseKey(hkey);
 
-        match result {
-            Ok(()) => {
-                let len_u16 = (buf_len as usize) / 2;
-                Ok(Some(String::from_utf16_lossy(&buf[..len_u16.saturating_sub(1)])))
-            }
-            Err(_) => Ok(None),
+        if result.is_ok() {
+            let len_u16 = (buf_len as usize) / 2;
+            Ok(Some(String::from_utf16_lossy(&buf[..len_u16.saturating_sub(1)])))
+        } else {
+            Ok(None)
         }
     }
 }
@@ -81,14 +80,14 @@ pub fn restore_startup_item(
 
     let Some(value) = previous_value else { return Ok(()) };
 
-    let (_, subkey) = validate_registry_path(location)?;
-    validate_value_name(app_name)?;
+    let (_, subkey) = validate_registry_path(location).map_err(RegistryError::Validation)?;
+    validate_value_name(app_name).map_err(RegistryError::Validation)?;
     let wide = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
 
     unsafe {
         let mut hkey = HKEY::default();
         let subkey_w = wide(subkey);
-        RegCreateKeyExW(
+        let create_result = RegCreateKeyExW(
             HKEY_CURRENT_USER,
             PCWSTR(subkey_w.as_ptr()),
             0,
@@ -98,15 +97,21 @@ pub fn restore_startup_item(
             None,
             &mut hkey,
             None,
-        )
-        .map_err(|e| StartupError::Registry(RegistryError::Win32(e.to_string())))?;
+        );
+        if !create_result.is_ok() {
+            return Err(StartupError::Registry(RegistryError::Win32(format!("{create_result:?}"))));
+        }
 
         let name_w = wide(app_name);
         let value_w = wide(value);
         let bytes = std::slice::from_raw_parts(value_w.as_ptr() as *const u8, value_w.len() * 2);
         let result = RegSetValueExW(hkey, PCWSTR(name_w.as_ptr()), 0, REG_SZ, Some(bytes));
         let _ = RegCloseKey(hkey);
-        result.map_err(|e| StartupError::Registry(RegistryError::Win32(e.to_string())))
+        if result.is_ok() {
+            Ok(())
+        } else {
+            Err(StartupError::Registry(RegistryError::Win32(format!("{result:?}"))))
+        }
     }
 }
 
