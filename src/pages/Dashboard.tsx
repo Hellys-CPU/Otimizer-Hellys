@@ -12,6 +12,8 @@ interface SystemStatus {
 export default function Dashboard() {
   const { profiles, loadProfiles, applyProfile, restoreProfile, loading, error } = useAppStore();
   const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [cleaning, setCleaning] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<string | null>(null);
 
   useEffect(() => {
     loadProfiles();
@@ -28,6 +30,26 @@ export default function Dashboard() {
   }, [loadProfiles]);
 
   const activeProfile = profiles.find((p) => p.ativo);
+
+  const handleCleanTemp = async () => {
+    if (!window.confirm("Apagar arquivos temporários do usuário (%TEMP%)? Isso não pode ser desfeito.")) {
+      return;
+    }
+    setCleaning(true);
+    setCleanupResult(null);
+    try {
+      const report = await api.cleanTempFiles();
+      const mb = (report.bytesFreed / 1024 / 1024).toFixed(1);
+      setCleanupResult(
+        `${report.filesDeleted} arquivo(s) removido(s), ${mb} MB liberados` +
+          (report.errors > 0 ? ` (${report.errors} arquivo(s) em uso, ignorado(s))` : ""),
+      );
+    } catch (err) {
+      setCleanupResult(`Erro: ${String(err)}`);
+    } finally {
+      setCleaning(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -65,6 +87,25 @@ export default function Dashboard() {
         ) : (
           <p className="text-sm text-slate-400">Nenhum perfil aplicado. Selecione um em Perfis.</p>
         )}
+      </div>
+
+      <div className="rounded-lg border border-forge-border bg-forge-panel p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium text-slate-300">Limpeza de arquivos temporários</h3>
+            <p className="text-xs text-slate-500">
+              Apaga apenas %TEMP% do usuário atual. Não mexe em arquivos de sistema, não é reversível.
+            </p>
+          </div>
+          <button
+            disabled={cleaning}
+            onClick={handleCleanTemp}
+            className="rounded-md border border-forge-border px-3 py-1.5 text-sm hover:bg-white/5"
+          >
+            {cleaning ? "Limpando..." : "Limpar agora"}
+          </button>
+        </div>
+        {cleanupResult && <p className="mt-2 text-xs text-slate-400">{cleanupResult}</p>}
       </div>
 
       <div className="rounded-lg border border-forge-border bg-forge-panel p-4">

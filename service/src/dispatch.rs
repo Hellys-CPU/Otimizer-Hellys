@@ -1,4 +1,4 @@
-use crate::modules::{network, power, registry, scheduled_tasks, services, startup};
+use crate::modules::{dpc_isr, network, power, registry, restore_point, scheduled_tasks, services, startup};
 use systemforge_shared::{ServiceRequest, ServiceResponse};
 
 pub fn handle(req: ServiceRequest) -> ServiceResponse {
@@ -100,6 +100,21 @@ pub fn handle(req: ServiceRequest) -> ServiceResponse {
             Ok(()) => ServiceResponse::Ok,
             Err(e) => ServiceResponse::Error(e.to_string()),
         },
+
+        ServiceRequest::CreateRestorePoint { description } => match restore_point::create(&description) {
+            Ok(()) => ServiceResponse::Ok,
+            Err(e) => ServiceResponse::Error(e.to_string()),
+        },
+
+        ServiceRequest::CaptureDpcIsr { duration_secs } => {
+            match dpc_isr::capture(std::time::Duration::from_secs(duration_secs as u64)) {
+                Ok(result) => ServiceResponse::DpcIsrCapture {
+                    etl_path: result.etl_path.to_string_lossy().to_string(),
+                    csv_path: result.csv_path.map(|p| p.to_string_lossy().to_string()),
+                },
+                Err(e) => ServiceResponse::Error(e.to_string()),
+            }
+        }
     }
 }
 

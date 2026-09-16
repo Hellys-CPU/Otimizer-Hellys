@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useAppStore } from "@/store/useAppStore";
 
 export default function Profiles() {
-  const { profiles, loadProfiles, applyProfile, restoreProfile, loading } = useAppStore();
+  const { profiles, loadProfiles, applyProfile, restoreProfile, loading, error } = useAppStore();
 
   useEffect(() => {
     loadProfiles();
@@ -11,6 +11,11 @@ export default function Profiles() {
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold">Perfis</h2>
+      {error && (
+        <div className="rounded-md border border-forge-danger/40 bg-forge-danger/10 p-3 text-sm text-forge-danger">
+          {error}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-4">
         {profiles.map((p) => (
           <div key={p.id} className="rounded-lg border border-forge-border bg-forge-panel p-4">

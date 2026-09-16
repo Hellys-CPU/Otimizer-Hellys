@@ -301,3 +301,160 @@ pub fn restore_startup_item(
         }
     }
 }
+
+/// Muda o tipo de inicialização de um serviço do Windows, salvando o original.
+pub fn apply_service_start_type(
+    conn: &Connection,
+    session_id: &str,
+    optimization_id: &str,
+    service_name: &str,
+    target_start_type: &str,
+) -> Result<(), EngineError> {
+    let original = service_client::service_query_start_type(service_name).ok().flatten();
+    let command_desc = format!("service_set_start_type {service_name} = {target_start_type}");
+
+    match service_client::service_set_start_type(service_name, target_start_type) {
+        Ok(()) => {
+            let snapshot_id =
+                new_snapshot(conn, session_id, optimization_id, original.as_deref(), Some(target_start_type))?;
+            conn.execute(
+                "INSERT INTO service_snapshots (id, snapshot_id, service_name, start_type_original, status_original, dependencies_json)
+                 VALUES (?1, ?2, ?3, ?4, NULL, '[]')",
+                rusqlite::params![
+                    Uuid::new_v4().to_string(),
+                    snapshot_id,
+                    service_name,
+                    original.clone().unwrap_or_default(),
+                ],
+            )?;
+            conn.execute(
+                "UPDATE optimizations SET valor_atual = ?1 WHERE id = ?2",
+                rusqlite::params![target_start_type, optimization_id],
+            )?;
+            log(conn, session_id, &command_desc, "success", None, Some(0), false)?;
+            Ok(())
+        }
+        Err(e) => {
+            log(conn, session_id, &command_desc, "error", Some(&e.to_string()), None, false)?;
+            Err(EngineError::Service(e.to_string()))
+        }
+    }
+}
+
+/// Restaura o tipo de inicialização original do serviço.
+pub fn restore_service_start_type(
+    conn: &Connection,
+    session_id: &str,
+    optimization_id: &str,
+) -> Result<(), EngineError> {
+    let row: Option<(String, String)> = conn
+        .query_row(
+            "SELECT sv.service_name, sv.start_type_original
+             FROM service_snapshots sv
+             JOIN optimization_snapshots os ON os.id = sv.snapshot_id
+             WHERE os.optimization_id = ?1 AND os.status = 'applied'
+             ORDER BY os.aplicado_em DESC LIMIT 1",
+            [optimization_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .ok();
+
+    let Some((service_name, original_start_type)) = row.filter(|(_, t)| !t.is_empty()) else {
+        return Err(EngineError::NoSnapshotToRestore(optimization_id.to_string()));
+    };
+
+    let command_desc = format!("service_restore_start_type {service_name} -> {original_start_type}");
+    match service_client::service_set_start_type(&service_name, &original_start_type) {
+        Ok(()) => {
+            conn.execute(
+                "UPDATE optimization_snapshots SET status = 'restored', restaurado_em = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                 WHERE optimization_id = ?1 AND status = 'applied'",
+                [optimization_id],
+            )?;
+            conn.execute(
+                "UPDATE optimizations SET valor_atual = ?1 WHERE id = ?2",
+                rusqlite::params![original_start_type, optimization_id],
+            )?;
+            log(conn, session_id, &command_desc, "success", None, Some(0), false)?;
+            Ok(())
+        }
+        Err(e) => {
+            log(conn, session_id, &command_desc, "error", Some(&e.to_string()), None, false)?;
+            Err(EngineError::Service(e.to_string()))
+        }
+    }
+}
+
+/// Desativa uma tarefa agendada, salvando se ela estava ativa antes.
+pub fn apply_scheduled_task_disable(
+    conn: &Connection,
+    session_id: &str,
+    optimization_id: &str,
+    task_path: &str,
+) -> Result<(), EngineError> {
+    let was_enabled = service_client::scheduled_task_query_enabled(task_path).unwrap_or(true);
+    let command_desc = format!("scheduled_task_disable {task_path}");
+
+    match service_client::scheduled_task_set_enabled(task_path, false) {
+        Ok(()) => {
+            let snapshot_id = new_snapshot(
+                conn,
+                session_id,
+                optimization_id,
+                Some(&was_enabled.to_string()),
+                Some("false"),
+            )?;
+            conn.execute(
+                "INSERT INTO scheduled_task_snapshots (id, snapshot_id, task_path, was_enabled, task_xml_backup)
+                 VALUES (?1, ?2, ?3, ?4, '')",
+                rusqlite::params![Uuid::new_v4().to_string(), snapshot_id, task_path, was_enabled as i64],
+            )?;
+            log(conn, session_id, &command_desc, "success", None, Some(0), false)?;
+            Ok(())
+        }
+        Err(e) => {
+            log(conn, session_id, &command_desc, "error", Some(&e.to_string()), None, false)?;
+            Err(EngineError::Service(e.to_string()))
+        }
+    }
+}
+
+/// Restaura o estado ativo/inativo original da tarefa agendada.
+pub fn restore_scheduled_task(
+    conn: &Connection,
+    session_id: &str,
+    optimization_id: &str,
+) -> Result<(), EngineError> {
+    let row: Option<(String, i64)> = conn
+        .query_row(
+            "SELECT sts.task_path, sts.was_enabled
+             FROM scheduled_task_snapshots sts
+             JOIN optimization_snapshots os ON os.id = sts.snapshot_id
+             WHERE os.optimization_id = ?1 AND os.status = 'applied'
+             ORDER BY os.aplicado_em DESC LIMIT 1",
+            [optimization_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .ok();
+
+    let Some((task_path, was_enabled)) = row else {
+        return Err(EngineError::NoSnapshotToRestore(optimization_id.to_string()));
+    };
+
+    let command_desc = format!("scheduled_task_restore {task_path}");
+    match service_client::scheduled_task_set_enabled(&task_path, was_enabled != 0) {
+        Ok(()) => {
+            conn.execute(
+                "UPDATE optimization_snapshots SET status = 'restored', restaurado_em = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                 WHERE optimization_id = ?1 AND status = 'applied'",
+                [optimization_id],
+            )?;
+            log(conn, session_id, &command_desc, "success", None, Some(0), false)?;
+            Ok(())
+        }
+        Err(e) => {
+            log(conn, session_id, &command_desc, "error", Some(&e.to_string()), None, false)?;
+            Err(EngineError::Service(e.to_string()))
+        }
+    }
+}

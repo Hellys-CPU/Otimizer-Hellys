@@ -8,6 +8,7 @@ import Logs from "@/pages/Logs";
 import Games from "@/pages/Games";
 import Comparison from "@/pages/Comparison";
 import Settings from "@/pages/Settings";
+import Diagnostics from "@/pages/Diagnostics";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard" },
@@ -15,6 +16,7 @@ const NAV_ITEMS = [
   { to: "/catalog", label: "Catálogo" },
   { to: "/games", label: "Jogos" },
   { to: "/comparison", label: "Comparação" },
+  { to: "/diagnostics", label: "Diagnóstico" },
   { to: "/security", label: "Segurança" },
   { to: "/backups", label: "Backup e Restauração" },
   { to: "/logs", label: "Logs" },
@@ -52,6 +54,7 @@ export default function App() {
           <Route path="/catalog" element={<Catalog />} />
           <Route path="/games" element={<Games />} />
           <Route path="/comparison" element={<Comparison />} />
+          <Route path="/diagnostics" element={<Diagnostics />} />
           <Route path="/security" element={<Security />} />
           <Route path="/backups" element={<Backups />} />
           <Route path="/logs" element={<Logs />} />

@@ -9,6 +9,8 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("0002_seed", include_str!("../../migrations/0002_seed.sql")),
     ("0003_telemetry", include_str!("../../migrations/0003_telemetry.sql")),
     ("0004_security", include_str!("../../migrations/0004_security.sql")),
+    ("0005_advanced", include_str!("../../migrations/0005_advanced.sql")),
+    ("0006_profiles", include_str!("../../migrations/0006_profiles.sql")),
 ];
 
 impl Db {
@@ -69,31 +71,31 @@ mod tests {
         let optimizations: i64 = conn
             .query_row("SELECT COUNT(*) FROM optimizations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(optimizations, 8, "5 seed nível 1 + 3 do catálogo de segurança");
+        assert_eq!(optimizations, 21, "5 seed + 3 segurança + 13 avançado (0005)");
 
         let security_optimizations: i64 = conn
             .query_row("SELECT COUNT(*) FROM optimizations WHERE categoria = 'security'", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(security_optimizations, 3);
+        assert_eq!(security_optimizations, 4);
 
-        let security_linked_to_profiles: i64 = conn
+        let experimental_linked_to_profiles: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM profile_optimizations po
                  JOIN optimizations o ON o.id = po.optimization_id
-                 WHERE o.categoria = 'security'",
+                 WHERE o.risco = 'experimental'",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
         assert_eq!(
-            security_linked_to_profiles, 0,
-            "tweaks de segurança nunca podem ser aplicados via perfil, só individualmente"
+            experimental_linked_to_profiles, 0,
+            "nível 3 (experimental) nunca pode ser aplicado via perfil, só individualmente"
         );
 
         let profiles: i64 = conn
             .query_row("SELECT COUNT(*) FROM profiles", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(profiles, 2);
+        assert_eq!(profiles, 6);
 
         let telemetry_opt_in: String = conn
             .query_row("SELECT value FROM user_settings WHERE key = 'telemetry_opt_in'", [], |r| r.get(0))
@@ -113,6 +115,6 @@ mod tests {
         let optimizations: i64 = conn
             .query_row("SELECT COUNT(*) FROM optimizations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(optimizations, 8);
+        assert_eq!(optimizations, 21);
     }
 }

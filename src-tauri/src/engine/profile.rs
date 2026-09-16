@@ -49,26 +49,38 @@ fn dispatch_apply(conn: &Connection, session_id: &str, opt: &OptimizationRow) ->
                 .ok_or_else(|| EngineError::RequiresManualSelection(opt.id.clone()))?;
             backup::apply_registry_dword(conn, session_id, &opt.id, path, value_name, recommended)
         }
-        ActionId::PowerSetScheme => backup::apply_power_scheme(
-            conn,
-            session_id,
-            &opt.id,
-            systemforge_shared::SCHEME_HIGH_PERFORMANCE,
-        ),
+        ActionId::PowerSetScheme => {
+            let target_guid = opt
+                .valor_recomendado
+                .as_deref()
+                .filter(|v| v.len() == 36)
+                .unwrap_or(systemforge_shared::SCHEME_HIGH_PERFORMANCE);
+            backup::apply_power_scheme(conn, session_id, &opt.id, target_guid)
+        }
         ActionId::StartupDisableApp => {
             // Requer seleção manual do item pelo usuário (não há um único app
             // "correto" universal) — a UI deve chamar apply_optimization com o
             // item escolhido via um comando dedicado, não via aplicação de perfil.
             Err(EngineError::RequiresManualSelection(opt.id.clone()))
         }
-        // Serviços/Tarefas/Rede: catálogo e protocolo já suportam essas ações
-        // (ver shared::ActionId e modules::service_client), mas nenhum tweak
-        // seed as usa ainda e a orquestração de aplicar-via-perfil para elas
-        // não foi implementada nesta fase — cai aqui como "exige seleção
-        // manual" em vez de fingir que funciona.
-        ActionId::ServiceSetStartType
-        | ActionId::ServiceRestoreStartType
-        | ActionId::ScheduledTaskDisable
+        ActionId::ServiceSetStartType => {
+            let service_name = opt.caminho.as_deref().ok_or_else(|| {
+                EngineError::RequiresManualSelection(opt.id.clone())
+            })?;
+            let start_type = opt.valor_recomendado.as_deref().ok_or_else(|| {
+                EngineError::RequiresManualSelection(opt.id.clone())
+            })?;
+            backup::apply_service_start_type(conn, session_id, &opt.id, service_name, start_type)
+        }
+        ActionId::ScheduledTaskDisable => {
+            let task_path = opt.caminho.as_deref().ok_or_else(|| {
+                EngineError::RequiresManualSelection(opt.id.clone())
+            })?;
+            backup::apply_scheduled_task_disable(conn, session_id, &opt.id, task_path)
+        }
+        // Rede exige seleção do adaptador pelo usuário — sem um único
+        // "adaptador correto" universal, não dá para aplicar via perfil.
+        ActionId::ServiceRestoreStartType
         | ActionId::ScheduledTaskRestore
         | ActionId::NetworkSetDns
         | ActionId::NetworkRestoreDns
@@ -84,6 +96,8 @@ fn dispatch_restore(conn: &Connection, session_id: &str, opt: &OptimizationRow) 
         ActionId::RegistryRestoreValue => backup::restore_registry_dword(conn, session_id, &opt.id),
         ActionId::PowerRestoreScheme => backup::restore_power_scheme(conn, session_id, &opt.id),
         ActionId::StartupRestoreApp => backup::restore_startup_item(conn, session_id, &opt.id),
+        ActionId::ServiceRestoreStartType => backup::restore_service_start_type(conn, session_id, &opt.id),
+        ActionId::ScheduledTaskRestore => backup::restore_scheduled_task(conn, session_id, &opt.id),
         _ => Err(EngineError::NoSnapshotToRestore(opt.id.clone())),
     }
 }
@@ -102,7 +116,7 @@ pub fn apply_profile(conn: &Connection, profile_id: &str) -> Result<ExecutionSes
     )?;
 
     let mut stmt = conn.prepare(
-        "SELECT optimization_id FROM profile_optimizations WHERE profile_id = ?1 AND proibido = 0",
+        "SELECT po.optimization_id FROM profile_optimizations po JOIN optimizations o ON o.id = po.optimization_id WHERE po.profile_id = ?1 AND po.proibido = 0 AND o.risco != 'experimental'",
     )?;
     let optimization_ids: Vec<String> = stmt
         .query_map([profile_id], |row| row.get(0))?
@@ -159,7 +173,7 @@ pub fn restore_profile(conn: &Connection, profile_id: &str) -> Result<(), Engine
     )?;
 
     let mut stmt = conn.prepare(
-        "SELECT optimization_id FROM profile_optimizations WHERE profile_id = ?1 AND proibido = 0",
+        "SELECT po.optimization_id FROM profile_optimizations po JOIN optimizations o ON o.id = po.optimization_id WHERE po.profile_id = ?1 AND po.proibido = 0 AND o.risco != 'experimental'",
     )?;
     let optimization_ids: Vec<String> = stmt
         .query_map([profile_id], |row| row.get(0))?

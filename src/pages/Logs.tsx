@@ -22,6 +22,7 @@ export default function Logs() {
             <th>Usuário</th>
             <th>Data</th>
             <th>Resultado</th>
+            <th>Erro</th>
             <th>Código</th>
             <th>Reinício</th>
           </tr>
@@ -34,6 +35,9 @@ export default function Logs() {
               <td>{new Date(l.timestamp).toLocaleString("pt-BR")}</td>
               <td className={l.result === "success" ? "text-forge-safe" : "text-forge-danger"}>
                 {l.result}
+              </td>
+              <td className="max-w-xs whitespace-pre-wrap break-words text-xs text-forge-danger">
+                {l.errorMessage ?? "—"}
               </td>
               <td>{l.returnCode ?? "—"}</td>
               <td>{l.requiresReboot ? "Sim" : "Não"}</td>

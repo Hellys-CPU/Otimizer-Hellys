@@ -7,6 +7,13 @@ import type {
   ProcessInfo,
   DetectedGame,
   TelemetryComparison,
+  CleanupReport,
+  StartupAppDiag,
+  ServiceDiag,
+  DiskDiag,
+  PhysicalDiskDiag,
+  GpuDiag,
+  DriverDiag,
 } from "@/types";
 
 /**
@@ -51,4 +58,19 @@ export const api = {
   listTelemetryComparisons: () => invoke<TelemetryComparison[]>("list_telemetry_comparisons"),
   getTelemetryOptIn: () => invoke<boolean>("get_telemetry_opt_in"),
   setTelemetryOptIn: (enabled: boolean) => invoke<void>("set_telemetry_opt_in", { enabled }),
+
+  cleanTempFiles: () => invoke<CleanupReport>("clean_temp_files"),
+
+  createRestorePoint: (description: string) => invoke<void>("create_restore_point", { description }),
+  listStartupApps: () => invoke<StartupAppDiag[]>("list_startup_apps"),
+  listServicesDiagnostic: () => invoke<ServiceDiag[]>("list_services_diagnostic"),
+  listDisks: () => invoke<DiskDiag[]>("list_disks"),
+  listPhysicalDisks: () => invoke<PhysicalDiskDiag[]>("list_physical_disks"),
+  listGpus: () => invoke<GpuDiag[]>("list_gpus"),
+  listDrivers: () => invoke<DriverDiag[]>("list_drivers"),
+  getCurrentPowerScheme: () => invoke<string | null>("get_current_power_scheme"),
+  exportDiagnostics: () => invoke<string>("export_diagnostics"),
+
+  captureDpcIsr: (durationSecs: number) =>
+    invoke<{ etlPath: string; csvPath: string | null }>("capture_dpc_isr", { durationSecs }),
 };

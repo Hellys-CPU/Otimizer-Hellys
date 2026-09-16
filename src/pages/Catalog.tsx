@@ -5,6 +5,7 @@ import { api } from "@/lib/tauri";
 export default function Catalog() {
   const { catalog, loadCatalog, loading } = useAppStore();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ id: string; ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     loadCatalog();
@@ -12,9 +13,13 @@ export default function Catalog() {
 
   const handleApply = async (id: string) => {
     setBusyId(id);
+    setFeedback(null);
     try {
       await api.applyOptimization(id);
       await loadCatalog();
+      setFeedback({ id, ok: true, message: "Aplicado com sucesso." });
+    } catch (err) {
+      setFeedback({ id, ok: false, message: String(err) });
     } finally {
       setBusyId(null);
     }
@@ -22,9 +27,13 @@ export default function Catalog() {
 
   const handleRestore = async (id: string) => {
     setBusyId(id);
+    setFeedback(null);
     try {
       await api.restoreOptimization(id);
       await loadCatalog();
+      setFeedback({ id, ok: true, message: "Restaurado com sucesso." });
+    } catch (err) {
+      setFeedback({ id, ok: false, message: String(err) });
     } finally {
       setBusyId(null);
     }
@@ -51,6 +60,12 @@ export default function Catalog() {
               <td className="py-2">
                 <p>{o.nome}</p>
                 <p className="text-xs text-slate-500">{o.descricao}</p>
+                {feedback?.id === o.id && (
+                  <p className={`mt-1 text-xs ${feedback.ok ? "text-forge-safe" : "text-forge-danger"}`}>
+                    {feedback.ok ? "✓ " : "✗ "}
+                    {feedback.message}
+                  </p>
+                )}
               </td>
               <td>{o.categoria}</td>
               <td>

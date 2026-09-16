@@ -5,6 +5,7 @@ import type { Optimization } from "@/types";
 export default function Security() {
   const [items, setItems] = useState<Optimization[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ id: string; ok: boolean; message: string } | null>(null);
 
   const reload = () =>
     api
@@ -26,9 +27,13 @@ export default function Security() {
     );
     if (!confirmed) return;
     setBusyId(o.id);
+    setFeedback(null);
     try {
       await api.applyOptimization(o.id);
       await reload();
+      setFeedback({ id: o.id, ok: true, message: "Aplicado com sucesso." });
+    } catch (err) {
+      setFeedback({ id: o.id, ok: false, message: String(err) });
     } finally {
       setBusyId(null);
     }
@@ -36,9 +41,13 @@ export default function Security() {
 
   const handleRestore = async (o: Optimization) => {
     setBusyId(o.id);
+    setFeedback(null);
     try {
       await api.restoreOptimization(o.id);
       await reload();
+      setFeedback({ id: o.id, ok: true, message: "Restaurado com sucesso." });
+    } catch (err) {
+      setFeedback({ id: o.id, ok: false, message: String(err) });
     } finally {
       setBusyId(null);
     }
@@ -67,6 +76,12 @@ export default function Security() {
               Benefício esperado: {o.beneficioEsperado} · Reinicialização:{" "}
               {o.requerReinicializacao ? "sim" : "não"} · Fonte: {o.fonteTecnica}
             </p>
+            {feedback?.id === o.id && (
+              <p className={`mb-3 text-xs ${feedback.ok ? "text-forge-safe" : "text-forge-danger"}`}>
+                {feedback.ok ? "✓ " : "✗ "}
+                {feedback.message}
+              </p>
+            )}
             <div className="flex gap-2">
               <button
                 disabled={busyId === o.id}

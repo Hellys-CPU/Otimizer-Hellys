@@ -105,6 +105,45 @@ service/                  Serviço privilegiado — único processo que grava de
                                    network.rs (netsh)
 ```
 
+## Diagnóstico (tela nova)
+
+Módulo read-only que não passa pelo Serviço (exceto ponto de restauração e
+DPC/ISR, que exigem elevação): serviços do Windows, apps de inicialização
+(chaves Run), espaço/saúde de disco, discos físicos (SMART via
+`Get-PhysicalDisk`), GPU e driver, plano de energia atual. Implementado
+chamando `powershell.exe` com scripts fixos (nunca interpola entrada do
+usuário) e parseando a saída como JSON — evita reimplementar WMI/Win32 à
+mão em código não testável neste ambiente.
+
+- **Exportar diagnóstico**: agrega tudo isso + CPU/RAM/processos num JSON em
+  `Documentos\SystemForge-diagnostico-<timestamp>.json`.
+- **Ponto de restauração real**: via `Checkpoint-Computer` (Serviço, precisa
+  admin). O Windows limita a frequência (~1 por 24h) — esse erro chega
+  como está, nunca é escondido.
+- **Trace de DPC/ISR**: grava com `wpr.exe` (built-in, bem documentado — essa
+  parte tem confiança alta). O resumo por driver via `xperf -a dpcisr` só
+  roda se o Windows ADK estiver instalado, e o parser desse CSV **nunca foi
+  validado contra uma saída real** (não há Windows disponível para gerar um
+  trace de teste neste ambiente) — por isso a UI devolve os caminhos do
+  `.etl`/`.csv` brutos para abrir no Windows Performance Analyzer, em vez de
+  arriscar mostrar números processados por um parser não verificado.
+
+## Limpeza de temporários
+
+Só `%TEMP%` do usuário atual — nunca arquivo de sistema. Não passa pelo motor
+de backup/restauração (não existe "desfazer" para arquivo apagado). Botão no
+Dashboard, com confirmação.
+
+## Catálogo e perfis
+
+21 otimizações no catálogo seed: 5 nível 1 (seguras), 4 de segurança (HVCI,
+VBS, SmartScreen, HAGS — nunca aplicáveis via perfil, só individualmente,
+garantido por filtro no SQL de `apply_profile`/`restore_profile`, não só por
+disciplina ao popular a migration) e 13 nível 2/3 reais (throttling de rede,
+prioridade de CPU/GPU, SysMain/DiagTrack, tarefas de telemetria, planos de
+energia). 6 perfis: padrão, Gaming competitivo, Gaming baixa latência,
+Streaming, Trabalho e desenvolvimento, Economia de energia.
+
 ## O que falta para produção
 
 - **Elevação/auto-start do Serviço.** Hoje é um processo manual (`cargo run -p
@@ -116,11 +155,15 @@ service/                  Serviço privilegiado — único processo que grava de
   reinícios do Serviço, mas um named pipe com ACL restrita a admins/LocalSystem é
   o endurecimento correto para produção.
 - **Validação em máquina Windows real** de todo código `cfg(windows)` (Registro,
-  SCM) — nunca compilado neste ambiente de desenvolvimento.
-- Uso de GPU, temperatura e latência de entrada na telemetria (hoje: CPU/RAM
-  sempre reais, FPS real via PresentMon opcional, o resto "não disponível").
-- Ponto de restauração do Windows antes de cada sessão de aplicação.
-- Tela de Rede e ligação de "Tarefas Agendadas"/"Serviços" no catálogo — o
-  protocolo e os módulos do Serviço já suportam essas ações (`ActionId::ServiceSetStartType`,
-  `ScheduledTaskDisable`, `NetworkSetDns`), mas nenhum tweak do catálogo seed as
-  usa ainda e a orquestração de aplicar-via-perfil para elas não foi conectada.
+  SCM) e de todos os scripts PowerShell do módulo de diagnóstico — nunca
+  rodaram de verdade, só foram conferidos linha a linha contra o código-fonte
+  da crate `windows` e a documentação do PowerShell.
+- **Parser de CSV do xperf** (DPC/ISR) não implementado de propósito — ver
+  seção Diagnóstico acima.
+- Uso de GPU (utilização/temperatura em tempo real) e latência de entrada na
+  telemetria de jogos (hoje: CPU/RAM sempre reais, FPS real via PresentMon
+  opcional, o resto "não disponível").
+- Tela de Rede — o protocolo e o módulo do Serviço (`netsh`) já suportam
+  `NetworkSetDns`/`NetworkSetDhcp`, mas não há UI nem tweak de catálogo
+  usando ainda (exige selecionar o adaptador, não dá para automatizar via
+  perfil sem entrada do usuário).

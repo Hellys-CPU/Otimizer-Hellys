@@ -256,3 +256,116 @@ pub fn set_telemetry_opt_in(db: State<Db>, enabled: bool) -> CmdResult<()> {
     .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[tauri::command]
+pub fn clean_temp_files() -> CmdResult<crate::modules::cleanup::CleanupReport> {
+    Ok(crate::modules::cleanup::clean_user_temp())
+}
+
+#[tauri::command]
+pub fn create_restore_point(description: String) -> CmdResult<()> {
+    crate::modules::service_client::create_restore_point(&description).map_err(|e| e.to_string())
+}
+
+#[derive(serde::Serialize)]
+pub struct DpcIsrCaptureResult {
+    pub etl_path: String,
+    pub csv_path: Option<String>,
+}
+
+/// Bloqueia pela duração pedida (captura de trace de kernel de verdade, não
+/// é instantâneo) — o Tauri roda comandos síncronos em thread própria, não
+/// trava a UI.
+#[tauri::command]
+pub fn capture_dpc_isr(duration_secs: u32) -> CmdResult<DpcIsrCaptureResult> {
+    let result = crate::modules::service_client::capture_dpc_isr(duration_secs).map_err(|e| e.to_string())?;
+    Ok(DpcIsrCaptureResult { etl_path: result.etl_path, csv_path: result.csv_path })
+}
+
+#[tauri::command]
+pub fn list_startup_apps() -> CmdResult<Vec<crate::modules::diagnostics::StartupAppInfo>> {
+    crate::modules::diagnostics::list_startup_apps().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_services_diagnostic() -> CmdResult<Vec<crate::modules::diagnostics::ServiceInfo>> {
+    crate::modules::diagnostics::list_services().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_disks() -> CmdResult<Vec<crate::modules::diagnostics::DiskInfo>> {
+    crate::modules::diagnostics::list_disks().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_physical_disks() -> CmdResult<Vec<crate::modules::diagnostics::PhysicalDiskInfo>> {
+    crate::modules::diagnostics::list_physical_disks().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_gpus() -> CmdResult<Vec<crate::modules::diagnostics::GpuInfo>> {
+    crate::modules::diagnostics::list_gpus().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_drivers() -> CmdResult<Vec<crate::modules::diagnostics::DriverInfo>> {
+    crate::modules::diagnostics::list_drivers().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_current_power_scheme() -> CmdResult<Option<String>> {
+    crate::modules::service_client::power_get_active_scheme().map_err(|e| e.to_string())
+}
+
+#[derive(serde::Serialize)]
+struct DiagnosticsExport {
+    generated_at: String,
+    system_status: SystemStatus,
+    top_processes: Vec<crate::modules::monitor::ProcessInfo>,
+    startup_apps: Vec<crate::modules::diagnostics::StartupAppInfo>,
+    services: Vec<crate::modules::diagnostics::ServiceInfo>,
+    disks: Vec<crate::modules::diagnostics::DiskInfo>,
+    physical_disks: Vec<crate::modules::diagnostics::PhysicalDiskInfo>,
+    gpus: Vec<crate::modules::diagnostics::GpuInfo>,
+    drivers: Vec<crate::modules::diagnostics::DriverInfo>,
+    current_power_scheme: Option<String>,
+}
+
+/// Agrega todo o diagnóstico disponível e grava em
+/// `Documentos\SystemForge-diagnostico-<timestamp>.json`. Cada seção que
+/// falhar (ex.: powershell indisponível) vira uma lista vazia em vez de
+/// abortar o export inteiro — o arquivo final documenta o que conseguiu
+/// coletar, não finge que coletou tudo.
+#[tauri::command]
+pub fn export_diagnostics() -> CmdResult<String> {
+    let export = DiagnosticsExport {
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        system_status: get_system_status()?,
+        top_processes: crate::modules::monitor::snapshot(20).top_processes,
+        startup_apps: crate::modules::diagnostics::list_startup_apps().unwrap_or_default(),
+        services: crate::modules::diagnostics::list_services().unwrap_or_default(),
+        disks: crate::modules::diagnostics::list_disks().unwrap_or_default(),
+        physical_disks: crate::modules::diagnostics::list_physical_disks().unwrap_or_default(),
+        gpus: crate::modules::diagnostics::list_gpus().unwrap_or_default(),
+        drivers: crate::modules::diagnostics::list_drivers().unwrap_or_default(),
+        current_power_scheme: crate::modules::service_client::power_get_active_scheme()
+            .ok()
+            .flatten(),
+    };
+
+    let json = serde_json::to_string_pretty(&export).map_err(|e| e.to_string())?;
+
+    let documents_dir = std::env::var("USERPROFILE")
+        .map(|p| std::path::PathBuf::from(p).join("Documents"))
+        .unwrap_or_else(|_| std::env::temp_dir());
+    std::fs::create_dir_all(&documents_dir).map_err(|e| e.to_string())?;
+
+    let filename = format!(
+        "SystemForge-diagnostico-{}.json",
+        chrono::Utc::now().format("%Y%m%d-%H%M%S")
+    );
+    let path = documents_dir.join(filename);
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+
+    Ok(path.display().to_string())
+}

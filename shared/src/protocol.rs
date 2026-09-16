@@ -37,6 +37,16 @@ pub enum ServiceRequest {
     NetworkGetDns { adapter_name: String },
     NetworkSetDns { adapter_name: String, primary: String, secondary: Option<String> },
     NetworkSetDhcp { adapter_name: String },
+
+    /// Cria um ponto de restauração do Windows. O próprio Windows limita a
+    /// frequência (1 por 24h por padrão) — esse erro chega como
+    /// `ServiceResponse::Error` com a mensagem real do PowerShell, nunca é
+    /// escondido ou fingido como sucesso.
+    CreateRestorePoint { description: String },
+
+    /// Grava um trace de kernel (DPC/ISR) com `wpr.exe` por `duration_secs`
+    /// segundos. Exige elevação — por isso vive no Serviço, não no Core.
+    CaptureDpcIsr { duration_secs: u32 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +59,9 @@ pub enum ServiceResponse {
     OptString(Option<String>),
     Bool(bool),
     Error(String),
+    /// `csv_path` só vem preenchido se `xperf.exe` (Windows ADK) estiver
+    /// instalado — sem ele, só o `.etl` bruto é retornado (abrível no WPA).
+    DpcIsrCapture { etl_path: String, csv_path: Option<String> },
 }
 
 pub fn write_message<W: Write, T: Serialize>(writer: &mut W, msg: &T) -> io::Result<()> {

@@ -71,6 +71,53 @@ export interface ExecutionSession {
   status: "pending" | "applied" | "partial" | "failed" | "restored";
 }
 
+export interface StartupAppDiag {
+  name: string;
+  command: string;
+  location: string;
+}
+
+export interface ServiceDiag {
+  name: string;
+  displayName: string;
+  status: string;
+  startType: string;
+}
+
+export interface DiskDiag {
+  driveLetter: string | null;
+  label: string | null;
+  sizeGb: number | null;
+  freeGb: number | null;
+  healthStatus: string | null;
+}
+
+export interface PhysicalDiskDiag {
+  friendlyName: string;
+  mediaType: string;
+  healthStatus: string;
+  operationalStatus: string;
+}
+
+export interface GpuDiag {
+  name: string;
+  driverVersion: string | null;
+  adapterRam: number | null;
+}
+
+export interface DriverDiag {
+  deviceName: string | null;
+  driverVersion: string | null;
+  driverDate: string | null;
+  isSigned: boolean | null;
+}
+
+export interface CleanupReport {
+  filesDeleted: number;
+  bytesFreed: number;
+  errors: number;
+}
+
 export interface ProcessInfo {
   pid: number;
   name: string;

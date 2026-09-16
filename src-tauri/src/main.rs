@@ -40,6 +40,17 @@ fn main() {
             commands::list_telemetry_comparisons,
             commands::get_telemetry_opt_in,
             commands::set_telemetry_opt_in,
+            commands::clean_temp_files,
+            commands::create_restore_point,
+            commands::list_startup_apps,
+            commands::list_services_diagnostic,
+            commands::list_disks,
+            commands::list_physical_disks,
+            commands::list_gpus,
+            commands::list_drivers,
+            commands::get_current_power_scheme,
+            commands::export_diagnostics,
+            commands::capture_dpc_isr,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o SystemForge Optimizer");

@@ -173,6 +173,25 @@ pub fn network_set_dhcp(adapter_name: &str) -> Result<(), ServiceClientError> {
     expect_ok(send_request(ServiceRequest::NetworkSetDhcp { adapter_name: adapter_name.to_string() })?)
 }
 
+pub fn create_restore_point(description: &str) -> Result<(), ServiceClientError> {
+    expect_ok(send_request(ServiceRequest::CreateRestorePoint { description: description.to_string() })?)
+}
+
+pub struct DpcIsrCapture {
+    pub etl_path: String,
+    pub csv_path: Option<String>,
+}
+
+/// Bloqueia pela duração da captura (não é instantâneo — está gravando um
+/// trace de kernel de verdade). Chame de uma thread/task que não trave a UI.
+pub fn capture_dpc_isr(duration_secs: u32) -> Result<DpcIsrCapture, ServiceClientError> {
+    match send_request(ServiceRequest::CaptureDpcIsr { duration_secs })? {
+        ServiceResponse::DpcIsrCapture { etl_path, csv_path } => Ok(DpcIsrCapture { etl_path, csv_path }),
+        ServiceResponse::Error(msg) => Err(ServiceClientError::ServiceError(msg)),
+        other => Err(ServiceClientError::UnexpectedResponse(other)),
+    }
+}
+
 pub fn ping() -> io::Result<()> {
     let mut stream = TcpStream::connect(("127.0.0.1", systemforge_shared::IPC_PORT))?;
     let token = read_token().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
