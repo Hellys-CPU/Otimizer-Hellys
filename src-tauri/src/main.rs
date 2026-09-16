@@ -7,6 +7,7 @@ mod models;
 mod modules;
 
 use db::Db;
+use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()

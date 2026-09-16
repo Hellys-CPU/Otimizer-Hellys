@@ -46,7 +46,7 @@ mod win_impl {
         validate_value_name(value_name)?;
 
         unsafe {
-            let mut hkey = HKEY::default();
+            let mut hkey = HKEY(std::ptr::null_mut());
             let subkey_w = wide(subkey);
             let open = RegOpenKeyExW(root_hkey(hive), PCWSTR(subkey_w.as_ptr()), 0, KEY_READ, &mut hkey);
             if open.is_err() {

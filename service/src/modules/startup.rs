@@ -28,7 +28,7 @@ pub fn read_run_value(location: &str, app_name: &str) -> Result<Option<String>, 
     let wide = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
 
     unsafe {
-        let mut hkey = HKEY::default();
+        let mut hkey = HKEY(std::ptr::null_mut());
         let subkey_w = wide(subkey);
         if RegOpenKeyExW(HKEY_CURRENT_USER, PCWSTR(subkey_w.as_ptr()), 0, KEY_READ, &mut hkey).is_err() {
             return Ok(None);
@@ -85,7 +85,7 @@ pub fn restore_startup_item(
     let wide = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
 
     unsafe {
-        let mut hkey = HKEY::default();
+        let mut hkey = HKEY(std::ptr::null_mut());
         let subkey_w = wide(subkey);
         let create_result = RegCreateKeyExW(
             HKEY_CURRENT_USER,

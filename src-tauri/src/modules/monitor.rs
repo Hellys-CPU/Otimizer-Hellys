@@ -84,11 +84,11 @@ pub fn is_elevated() -> bool {
     use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
     unsafe {
-        let mut token = HANDLE::default();
+        let mut token = HANDLE(std::ptr::null_mut());
         if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
             return false;
         }
-        let mut elevation = TOKEN_ELEVATION::default();
+        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
         let mut ret_len = 0u32;
         let ok = GetTokenInformation(
             token,

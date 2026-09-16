@@ -43,7 +43,7 @@ mod win_impl {
         validate_value_name(value_name)?;
 
         unsafe {
-            let mut hkey = HKEY::default();
+            let mut hkey = HKEY(std::ptr::null_mut());
             let subkey_w = wide(subkey);
             if RegOpenKeyExW(root_hkey(hive), PCWSTR(subkey_w.as_ptr()), 0, KEY_READ, &mut hkey).is_err() {
                 return Ok(None);
@@ -77,7 +77,7 @@ mod win_impl {
         validate_value_name(value_name)?;
 
         unsafe {
-            let mut hkey = HKEY::default();
+            let mut hkey = HKEY(std::ptr::null_mut());
             let subkey_w = wide(subkey);
             let create_result = RegCreateKeyExW(
                 root_hkey(hive),
@@ -111,7 +111,7 @@ mod win_impl {
         validate_value_name(value_name)?;
 
         unsafe {
-            let mut hkey = HKEY::default();
+            let mut hkey = HKEY(std::ptr::null_mut());
             let subkey_w = wide(subkey);
             if RegOpenKeyExW(root_hkey(hive), PCWSTR(subkey_w.as_ptr()), 0, KEY_WRITE, &mut hkey).is_err() {
                 return Ok(());
