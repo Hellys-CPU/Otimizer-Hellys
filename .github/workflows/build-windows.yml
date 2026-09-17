@@ -43,6 +43,18 @@ jobs:
       - name: Build do Serviço privilegiado (release)
         run: cargo build -p systemforge-service --release
 
+      - name: Preparar Serviço como sidecar do instalador
+        # Tauri embute um "external binary" no instalador (NSIS/MSI) desde que
+        # o arquivo-fonte tenha o sufixo do target triple no nome; ele mesmo
+        # remove esse sufixo ao instalar, deixando o .exe final na mesma pasta
+        # do app principal — exatamente onde service_launcher.rs procura por
+        # ele. Sem isso, o instalador nunca continha o Serviço de verdade.
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
+          Copy-Item target/release/systemforge-service.exe `
+            src-tauri/binaries/systemforge-service-x86_64-pc-windows-msvc.exe -Force
+
       - name: Build do instalador (Tauri)
         run: npm run tauri build -- --verbose
 
