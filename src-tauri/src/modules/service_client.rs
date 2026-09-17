@@ -8,9 +8,10 @@
 //! `service/src/main.rs::resolve_app_data_dir`, que precisa continuar
 //! espelhando esta função se um dos dois mudar).
 
-use std::io;
+use crate::modules::service_launcher;
 use std::net::TcpStream;
 use std::path::PathBuf;
+use std::time::Duration;
 use systemforge_shared::protocol::{read_message, write_message};
 use systemforge_shared::{ServiceRequest, ServiceResponse};
 use thiserror::Error;
@@ -27,6 +28,8 @@ pub enum ServiceClientError {
     UnexpectedResponse(ServiceResponse),
     #[error("o Serviço reportou um erro: {0}")]
     ServiceError(String),
+    #[error("não foi possível iniciar o Serviço privilegiado automaticamente: {0}")]
+    AutoStartFailed(String),
 }
 
 fn resolve_app_data_dir() -> PathBuf {
@@ -43,7 +46,37 @@ fn read_token() -> Result<String, ServiceClientError> {
         .map_err(|e| ServiceClientError::TokenUnavailable(path.display().to_string(), e.to_string()))
 }
 
+fn is_service_down(err: &ServiceClientError) -> bool {
+    matches!(
+        err,
+        ServiceClientError::TokenUnavailable(..) | ServiceClientError::Connection(_)
+    )
+}
+
+/// Tenta o pedido; se o Serviço parecer não estar rodando (token ausente ou
+/// conexão recusada), dispara a elevação via UAC uma vez e tenta de novo
+/// depois de esperar o token aparecer. Isso substitui o antigo fluxo manual
+/// (usuário abrindo um terminal Admin e rodando `systemforge-service.exe`
+/// à mão) — a causa mais comum de "clico em Aplicar e não acontece nada".
 fn send_request(req: ServiceRequest) -> Result<ServiceResponse, ServiceClientError> {
+    match try_send_request(&req) {
+        Err(err) if is_service_down(&err) => {
+            service_launcher::ensure_launched().map_err(|e| ServiceClientError::AutoStartFailed(e.to_string()))?;
+            if !service_launcher::wait_for_token(Duration::from_secs(8)) {
+                return Err(ServiceClientError::AutoStartFailed(
+                    "o Serviço não terminou de iniciar a tempo".to_string(),
+                ));
+            }
+            // O token pode existir um instante antes do listener TCP estar
+            // de fato aceitando conexões — pequena folga para evitar corrida.
+            std::thread::sleep(Duration::from_millis(300));
+            try_send_request(&req)
+        }
+        other => other,
+    }
+}
+
+fn try_send_request(req: &ServiceRequest) -> Result<ServiceResponse, ServiceClientError> {
     let token = read_token()?;
     let mut stream = TcpStream::connect(("127.0.0.1", systemforge_shared::IPC_PORT))
         .map_err(|e| ServiceClientError::Connection(e.to_string()))?;
@@ -58,7 +91,7 @@ fn send_request(req: ServiceRequest) -> Result<ServiceResponse, ServiceClientErr
         other => return Err(ServiceClientError::UnexpectedResponse(other)),
     }
 
-    write_message(&mut stream, &req).map_err(|e| ServiceClientError::Connection(e.to_string()))?;
+    write_message(&mut stream, req).map_err(|e| ServiceClientError::Connection(e.to_string()))?;
     read_message(&mut stream).map_err(|e| ServiceClientError::Connection(e.to_string()))
 }
 
@@ -192,12 +225,14 @@ pub fn capture_dpc_isr(duration_secs: u32) -> Result<DpcIsrCapture, ServiceClien
     }
 }
 
-pub fn ping() -> io::Result<()> {
-    let mut stream = TcpStream::connect(("127.0.0.1", systemforge_shared::IPC_PORT))?;
-    let token = read_token().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-    write_message(&mut stream, &ServiceRequest::Auth { token })?;
-    let _: ServiceResponse = read_message(&mut stream)?;
-    write_message(&mut stream, &ServiceRequest::Ping)?;
-    let _: ServiceResponse = read_message(&mut stream)?;
-    Ok(())
+pub fn ping() -> Result<(), ServiceClientError> {
+    expect_ok_pong(send_request(ServiceRequest::Ping)?)
+}
+
+fn expect_ok_pong(resp: ServiceResponse) -> Result<(), ServiceClientError> {
+    match resp {
+        ServiceResponse::Pong => Ok(()),
+        ServiceResponse::Error(msg) => Err(ServiceClientError::ServiceError(msg)),
+        other => Err(ServiceClientError::UnexpectedResponse(other)),
+    }
 }

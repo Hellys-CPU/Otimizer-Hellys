@@ -9,23 +9,38 @@ import type {
   DriverDiag,
 } from "@/types";
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  error,
+  children,
+}: {
+  title: string;
+  error?: string | null;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-lg border border-forge-border bg-forge-panel p-4">
       <h3 className="mb-3 text-sm font-medium text-slate-300">{title}</h3>
-      {children}
+      {error ? <p className="text-xs text-forge-danger">Erro: {error}</p> : children}
     </div>
   );
 }
 
 export default function Diagnostics() {
   const [startupApps, setStartupApps] = useState<StartupAppDiag[] | null>(null);
+  const [startupAppsError, setStartupAppsError] = useState<string | null>(null);
   const [services, setServices] = useState<ServiceDiag[] | null>(null);
+  const [servicesError, setServicesError] = useState<string | null>(null);
   const [disks, setDisks] = useState<DiskDiag[] | null>(null);
+  const [disksError, setDisksError] = useState<string | null>(null);
   const [physicalDisks, setPhysicalDisks] = useState<PhysicalDiskDiag[] | null>(null);
+  const [physicalDisksError, setPhysicalDisksError] = useState<string | null>(null);
   const [gpus, setGpus] = useState<GpuDiag[] | null>(null);
+  const [gpusError, setGpusError] = useState<string | null>(null);
   const [drivers, setDrivers] = useState<DriverDiag[] | null>(null);
+  const [driversError, setDriversError] = useState<string | null>(null);
   const [powerScheme, setPowerScheme] = useState<string | null>(null);
+  const [powerSchemeError, setPowerSchemeError] = useState<string | null>(null);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,13 +50,13 @@ export default function Diagnostics() {
   );
 
   useEffect(() => {
-    api.listStartupApps().then(setStartupApps).catch(() => setStartupApps([]));
-    api.listServicesDiagnostic().then(setServices).catch(() => setServices([]));
-    api.listDisks().then(setDisks).catch(() => setDisks([]));
-    api.listPhysicalDisks().then(setPhysicalDisks).catch(() => setPhysicalDisks([]));
-    api.listGpus().then(setGpus).catch(() => setGpus([]));
-    api.listDrivers().then(setDrivers).catch(() => setDrivers([]));
-    api.getCurrentPowerScheme().then(setPowerScheme).catch(() => setPowerScheme(null));
+    api.listStartupApps().then(setStartupApps).catch((e) => setStartupAppsError(String(e)));
+    api.listServicesDiagnostic().then(setServices).catch((e) => setServicesError(String(e)));
+    api.listDisks().then(setDisks).catch((e) => setDisksError(String(e)));
+    api.listPhysicalDisks().then(setPhysicalDisks).catch((e) => setPhysicalDisksError(String(e)));
+    api.listGpus().then(setGpus).catch((e) => setGpusError(String(e)));
+    api.listDrivers().then(setDrivers).catch((e) => setDriversError(String(e)));
+    api.getCurrentPowerScheme().then(setPowerScheme).catch((e) => setPowerSchemeError(String(e)));
   }, []);
 
   const handleExport = async () => {
@@ -154,11 +169,14 @@ export default function Diagnostics() {
         )}
       </Section>
 
-      <Section title={`Plano de energia atual${powerScheme ? "" : " — não disponível"}`}>
+      <Section
+        title={`Plano de energia atual${powerScheme ? "" : " — não disponível"}`}
+        error={powerSchemeError}
+      >
         <p className="font-mono text-xs text-slate-400">{powerScheme ?? "—"}</p>
       </Section>
 
-      <Section title="Discos (espaço)">
+      <Section title="Discos (espaço)" error={disksError}>
         {disks === null ? (
           <p className="text-xs text-slate-500">Carregando...</p>
         ) : disks.length === 0 ? (
@@ -191,7 +209,7 @@ export default function Diagnostics() {
         )}
       </Section>
 
-      <Section title="Discos físicos (SMART/saúde)">
+      <Section title="Discos físicos (SMART/saúde)" error={physicalDisksError}>
         {physicalDisks === null ? (
           <p className="text-xs text-slate-500">Carregando...</p>
         ) : physicalDisks.length === 0 ? (
@@ -222,7 +240,7 @@ export default function Diagnostics() {
         )}
       </Section>
 
-      <Section title="GPU">
+      <Section title="GPU" error={gpusError}>
         {gpus === null ? (
           <p className="text-xs text-slate-500">Carregando...</p>
         ) : (
@@ -247,7 +265,7 @@ export default function Diagnostics() {
         )}
       </Section>
 
-      <Section title="Aplicativos de inicialização (chave Run)">
+      <Section title="Aplicativos de inicialização (chave Run)" error={startupAppsError}>
         {startupApps === null ? (
           <p className="text-xs text-slate-500">Carregando...</p>
         ) : startupApps.length === 0 ? (
@@ -274,7 +292,7 @@ export default function Diagnostics() {
         )}
       </Section>
 
-      <Section title="Serviços do Windows">
+      <Section title="Serviços do Windows" error={servicesError}>
         {services === null ? (
           <p className="text-xs text-slate-500">Carregando...</p>
         ) : (
@@ -301,7 +319,7 @@ export default function Diagnostics() {
         )}
       </Section>
 
-      <Section title="Drivers de dispositivo">
+      <Section title="Drivers de dispositivo" error={driversError}>
         <p className="mb-2 text-xs text-slate-500">
           Data do driver é só um sinal, não indica defeito por si só.
         </p>
