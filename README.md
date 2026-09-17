@@ -26,14 +26,18 @@ ambiente Linux sem acesso a uma máquina Windows — o que pôde ser testado, fo
   rejeitado/aceito — 15 testes, incluindo um serviço protegido sendo recusado
   antes de qualquer chamada Win32.
 - `src-tauri`: banco/migrações, motor de perfis, detecção de jogos, parsing do CSV
-  do PresentMon — 11 testes (excluindo os arquivos que dependem do próprio Tauri,
+  do PresentMon — 14 testes (excluindo os arquivos que dependem do próprio Tauri,
   que não compila neste ambiente por falta de `webkit2gtk`/GTK do Linux).
 - Frontend: `tsc --noEmit` e `vite build` de produção, ambos limpos.
 
 O que **não pôde** ser testado (precisa de validação manual em uma máquina Windows
 antes de produção): todas as chamadas Win32 propriamente ditas (Registro, Service
-Control Manager), e o PresentMon (a lógica de parsing do CSV é testada com dados
-sintéticos, mas nunca rodou contra o binário real).
+Control Manager), o PresentMon (a lógica de parsing do CSV é testada com dados
+sintéticos, mas nunca rodou contra o binário real), e o auto-start do Serviço via
+`ShellExecuteExW`/UAC (`src-tauri/src/modules/service_launcher.rs`) — a assinatura
+da API foi conferida linha a linha contra o código-fonte real da crate `windows`
+0.58 (não só a documentação), mas o fluxo completo de UAC nunca rodou numa
+máquina Windows de verdade.
 
 ## Rodando no Windows
 
@@ -42,18 +46,39 @@ npm install
 npm run tauri dev
 ```
 
-Isso só sobe o Core. **O Serviço privilegiado precisa ser iniciado à parte** (não
-há handshake de elevação/auto-start implementado ainda — ver "O que falta" abaixo):
+O Core detecta sozinho quando o Serviço privilegiado não está rodando: na
+primeira ação que precisa dele (ex.: "Aplicar" em um tweak), dispara
+`systemforge-service.exe` (procurado ao lado do próprio executável do Core,
+como o instalador empacota os dois) via `ShellExecuteExW` com o verbo `runas`,
+o que abre o prompt de UAC do Windows uma única vez por sessão do app. Se o
+usuário aceitar, o Core espera o arquivo de token aparecer (até 8s) e repete a
+ação original automaticamente — sem precisar de um segundo terminal manual. Se
+o usuário negar o UAC, ou o executável do Serviço não for encontrado ao lado
+do Core, o erro aparece na tela (Logs / feedback inline) explicando o motivo,
+em vez de travar silenciosamente.
+
+Em desenvolvimento (`npm run tauri dev`), o Serviço não fica ao lado do
+`.exe` de dev do Tauri, então o auto-start não encontra o binário — nesse
+cenário, inicie-o manualmente como Administrador:
 
 ```powershell
 cargo run -p systemforge-service
 ```
 
-Rode-o como Administrador (clique direito no terminal → "Executar como
-administrador") para as operações de Registro/Serviços realmente terem permissão.
-Sem o Serviço rodando, qualquer tentativa de aplicar um tweak retorna erro de
-conexão — os dados de leitura (dashboard, catálogo, perfis) funcionam normalmente
-sem ele.
+**No instalador de produção (`.msi`/`.exe`), o Serviço vem embutido de
+verdade**, via o mecanismo de "external binary" do próprio Tauri
+(`bundle.externalBin` em `tauri.conf.json` + o workflow do CI renomeando
+`systemforge-service.exe` com o sufixo do target triple antes de rodar
+`tauri build`, que é a convenção que o bundler exige para reconhecer o
+sidecar). O NSIS e o WiX/MSI instalam esse binário na mesma pasta do
+executável principal, com o sufixo removido de volta — foi assim que
+descobri, revisando o código-fonte do bundler do Tauri (`nsis.rs`,
+`installer.nsi`, `main.wxs`) diretamente, que ele **não** ficava embutido
+antes desta mudança (só existia como um arquivo solto no Release do
+GitHub, sem nenhuma ligação com o instalador). Continua sem validação
+numa instalação Windows real — se depois de instalar
+`systemforge-service.exe` não estiver na mesma pasta do app, é sinal de
+que algo na etapa de CI quebrou.
 
 Pré-requisitos: Rust (toolchain MSVC), Node 18+, [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 (já vem instalado por padrão no Windows 11 e na maioria das instalações do Windows 10 atualizadas).
@@ -146,10 +171,6 @@ Streaming, Trabalho e desenvolvimento, Economia de energia.
 
 ## O que falta para produção
 
-- **Elevação/auto-start do Serviço.** Hoje é um processo manual (`cargo run -p
-  systemforge-service` como admin). Falta o Core detectar que o Serviço não está
-  rodando e disparar a instalação/início dele via UAC (`ShellExecuteExW` com verbo
-  `runas`, ou registro como Windows Service via SCM) — documentado, não escondido.
 - **Named pipe com ACL em vez de TCP loopback.** A porta 47732 hoje é só loopback
   + token aleatório por sessão, o que já impede acesso externo e replay entre
   reinícios do Serviço, mas um named pipe com ACL restrita a admins/LocalSystem é
